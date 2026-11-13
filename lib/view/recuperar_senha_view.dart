@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controller/recuperar_senha_controller.dart';
 import '../core/dependencias.dart';
 
+/// RF001: recuperação de senha por e-mail (Firebase Authentication).
 class RecuperarSenhaView extends StatefulWidget {
   const RecuperarSenhaView({super.key});
 
@@ -22,6 +23,8 @@ class _RecuperarSenhaViewState extends State<RecuperarSenhaView> {
   }
 
   Future<void> recuperar() async {
+    if (controller.carregando) return;
+
     final email = emailCtrl.text.trim();
     final erro = await controller.recuperar(email);
     if (!mounted) return;
@@ -33,7 +36,12 @@ class _RecuperarSenhaViewState extends State<RecuperarSenhaView> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Enviamos uma senha temporária para $email.')),
+      SnackBar(
+        content: Text(
+            'Enviamos um link para redefinir a senha em $email. '
+            'Confira também a caixa de spam.'),
+        duration: const Duration(seconds: 6),
+      ),
     );
     Navigator.pop(context);
   }
@@ -49,11 +57,16 @@ class _RecuperarSenhaViewState extends State<RecuperarSenhaView> {
           builder: (context, _) {
             return Column(
               children: [
-                const Text('Informe o e-mail cadastrado para recuperar a senha.'),
+                const Text(
+                    'Informe o e-mail cadastrado. Enviaremos um link para você '
+                    'criar uma nova senha.'),
                 const SizedBox(height: 20),
                 TextField(
                   controller: emailCtrl,
+                  enabled: !controller.carregando,
                   keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => recuperar(),
                   decoration: const InputDecoration(labelText: 'E-mail'),
                 ),
                 const SizedBox(height: 20),
@@ -61,8 +74,13 @@ class _RecuperarSenhaViewState extends State<RecuperarSenhaView> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: controller.carregando ? null : recuperar,
-                    child: Text(
-                        controller.carregando ? 'Enviando...' : 'Recuperar senha'),
+                    child: controller.carregando
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Enviar link de redefinição'),
                   ),
                 ),
               ],

@@ -1,78 +1,99 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../core/erros.dart';
 import '../model/livro.dart';
+import '../model/sessao.dart';
 
-/// Controla a lista de livros (dados de exemplo na memória).
-class LivroController extends ChangeNotifier {
-  final List<Livro> livros = [
-  Livro(
-    id: 1,
-    titulo: 'Damn Reincarnation',
-    autor: 'Kiki e Mogma',
-    genero: 'Fantasia',
-    paginas: 500,
-    sinopse: 'Hamel, um guerreiro que morreu antes de derrotar os demônios, reencarna como Eugene Lionhart, descendente de seu antigo companheiro, e parte em uma nova jornada para cumprir seu destino.',
-    lido: true,
-  ),
-  Livro(
-    id: 2,
-    titulo: 'Omniscient Reader\'s Viewpoint',
-    autor: 'Sing Shong',
-    genero: 'Fantasia e Ação',
-    paginas: 551,
-    sinopse: 'Kim Dokja é o único leitor que conhece o final de uma novel que se torna realidade. Usando seu conhecimento da história, ele tenta sobreviver a um mundo repleto de desafios mortais.',
-  ),
-  Livro(
-    id: 3,
-    titulo: 'Lord of Mysteries',
-    autor: 'Cuttlefish That Loves Diving',
-    genero: 'Fantasia Sombria e Mistério',
-    paginas: 1432,
-    sinopse: 'Zhou Mingrui desperta em um mundo de inspiração vitoriana, repleto de sociedades secretas, poderes sobrenaturais e entidades misteriosas, enquanto investiga os segredos de sua nova identidade.',
-    lido: true,
-  ),
-  Livro(
-    id: 4,
-    titulo: 'The Beginning After the End',
-    autor: 'TurtleMe',
-    genero: 'Fantasia e Aventura',
-    paginas: 500,
-    sinopse: 'King Grey renasce como Arthur Leywin em um mundo de magia. Com as memórias de sua vida anterior, ele busca construir uma nova vida enquanto enfrenta perigos e descobre os segredos desse mundo.',
-  ),
-];
+/// RF003 e RF004: livros na coleção "livros" do Firestore.
+/// Cada livro guarda o uid do dono; o usuário só lê e altera os seus.
+class LivroController {
+  final Sessao sessao;
+  final FirebaseFirestore _db;
 
-  int _proximoId = 5;
+  LivroController(this.sessao, {FirebaseFirestore? db})
+      : _db = db ?? FirebaseFirestore.instance;
 
-  List<Livro> get lidos => livros.where((l) => l.lido).toList();
+  /// Tempo máximo esperando o servidor confirmar uma gravação.
+  static const Duration _limite = Duration(seconds: 15);
 
-  Livro? buscarPorId(int id) {
-    for (final l in livros) {
-      if (l.id == id) return l;
+  CollectionReference<Map<String, dynamic>> get _livros =>
+      _db.collection('livros');
+
+  /// Livros do usuário logado, em tempo real, do mais novo para o mais antigo.
+  /// Um getter: cada chamada cria um novo stream (usado pelo "Tentar de novo").
+  Stream<List<Livro>> get livrosStream {
+    final uid = sessao.uid;
+    if (uid == null) return Stream.value(<Livro>[]);
+
+    return _livros.where('uid', isEqualTo: uid).snapshots().map((consulta) {
+      final lista = consulta.docs.map(Livro.fromDoc).toList();
+      // ordena aqui para não exigir índice composto no Firestore;
+      // criadoEm nulo = acabou de ser criado (o servidor ainda não confirmou)
+      lista.sort((a, b) {
+        final da = a.criadoEm ?? DateTime.now();
+        final db = b.criadoEm ?? DateTime.now();
+        return db.compareTo(da);
+      });
+      return lista;
+    });
+  }
+
+  /// Um livro em tempo real. Emite null se não existe (ou foi excluído).
+  Stream<Livro?> livroStream(String id) {
+    return _livros.doc(id).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final livro = Livro.fromDoc(doc);
+      return livro.uid == sessao.uid ? livro : null;
+    });
+  }
+
+  /// Busca um livro uma única vez (usado na edição).
+  Future<Livro?> buscarPorId(String id) async {
+    final doc = await _livros.doc(id).get();
+    if (!doc.exists) return null;
+    final livro = Livro.fromDoc(doc);
+    return livro.uid == sessao.uid ? livro : null;
+  }
+
+  // ------------------------------------------------------ escrita (RF003)
+
+  /// Cadastra um livro. Retorna null se deu certo, ou a mensagem de erro.
+  Future<String?> adicionar(Livro livro) {
+    return _executar(() {
+      final uid = sessao.uid;
+      if (uid == null) {
+        throw FirebaseAuthException(code: 'no-current-user');
+      }
+      return _livros.add(livro.toMapNovo(uid));
+    });
+  }
+
+  /// Salva as alterações de um livro (o id vem dentro do livro).
+  Future<String?> editar(Livro editado) {
+    return _executar(() => _livros.doc(editado.id).update(editado.toMap()));
+  }
+
+  Future<String?> alternarLido(Livro livro) {
+    return _executar(
+        () => _livros.doc(livro.id).update({'lido': !livro.lido}));
+  }
+
+  Future<String?> excluir(Livro livro) {
+    return _executar(() => _livros.doc(livro.id).delete());
+  }
+
+  /// Roda uma gravação e devolve null (sucesso) ou a mensagem de erro.
+  Future<String?> _executar(Future<void> Function() acao) async {
+    try {
+      await acao().timeout(_limite);
+      return null;
+    } on TimeoutException {
+      return 'O servidor não respondeu. Verifique sua conexão.';
+    } catch (e) {
+      return traduzirErroFirebase(e);
     }
-    return null;
-  }
-
-  void adicionar(Livro livro) {
-    livro.id = _proximoId++;
-    livros.add(livro);
-    notifyListeners();
-  }
-
-  void editar(Livro editado) {
-    final i = livros.indexWhere((l) => l.id == editado.id);
-    if (i != -1) {
-      livros[i] = editado;
-      notifyListeners();
-    }
-  }
-
-  void alternarLido(Livro livro) {
-    livro.lido = !livro.lido;
-    notifyListeners();
-  }
-
-  void excluir(Livro livro) {
-    livros.remove(livro);
-    notifyListeners();
   }
 }

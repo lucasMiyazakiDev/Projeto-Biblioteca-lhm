@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_routes.dart';
 import '../core/dependencias.dart';
 import '../model/sessao.dart';
+import '../model/usuario.dart';
 
 /// Menu lateral usado nas telas principais.
 class MenuLateral extends StatelessWidget {
@@ -22,12 +23,14 @@ class MenuLateral extends StatelessWidget {
     return Drawer(
       child: ListView(
         children: [
-          ListenableBuilder(
-            listenable: sessao,
-            builder: (context, _) {
+          // nome e e-mail vêm da coleção "usuarios" do Firestore
+          StreamBuilder<Usuario?>(
+            stream: sessao.usuarioStream,
+            builder: (context, snapshot) {
+              final usuario = snapshot.data;
               return UserAccountsDrawerHeader(
-                accountName: Text(sessao.usuarioLogado?.nome ?? ''),
-                accountEmail: Text(sessao.usuarioLogado?.email ?? ''),
+                accountName: Text(usuario?.nome ?? ''),
+                accountEmail: Text(usuario?.email ?? sessao.email ?? ''),
               );
             },
           ),
@@ -58,10 +61,13 @@ class MenuLateral extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.exit_to_app),
             title: const Text('Sair'),
-            onTap: () {
-              sessao.sair();
-              Navigator.pushNamedAndRemoveUntil(
-                  context, AppRoutes.login, (r) => false);
+            onTap: () async {
+              final navigator = Navigator.of(context);
+              // sai das telas protegidas ANTES de encerrar a sessão,
+              // para os streams do Firestore não darem erro de permissão
+              navigator.pushNamedAndRemoveUntil(
+                  AppRoutes.login, (r) => false);
+              await sessao.sair();
             },
           ),
         ],

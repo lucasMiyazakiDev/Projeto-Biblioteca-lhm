@@ -2,36 +2,65 @@ import 'package:flutter/material.dart';
 
 import '../controller/livro_controller.dart';
 import '../core/dependencias.dart';
+import '../model/livro.dart';
 import 'livro_formulario.dart';
 
-/// Funcionalidade 3: editar livro (recebe o id como argumento da rota).
-class EditarLivroView extends StatelessWidget {
+/// Edição de livro (recebe o id, String do Firestore, como argumento da rota).
+class EditarLivroView extends StatefulWidget {
   const EditarLivroView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final controller = getIt<LivroController>();
-    final id = ModalRoute.of(context)!.settings.arguments as int;
-    final livro = controller.buscarPorId(id);
+  State<EditarLivroView> createState() => _EditarLivroViewState();
+}
 
-    if (livro == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Editar livro')),
-        body: const Center(child: Text('Livro não encontrado.')),
-      );
+class _EditarLivroViewState extends State<EditarLivroView> {
+  final controller = getIt<LivroController>();
+  late Future<Livro?> _futuro;
+  bool _iniciado = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // busca o livro uma única vez (o ModalRoute só está disponível aqui)
+    if (!_iniciado) {
+      final id = ModalRoute.of(context)!.settings.arguments as String;
+      _futuro = controller.buscarPorId(id);
+      _iniciado = true;
     }
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Editar livro')),
-      body: LivroFormulario(
-        livro: livro,
-        textoBotao: 'Salvar alterações',
-        onSalvar: (editado) {
-          controller.editar(editado);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: const Text('Livro atualizado!')),
+      body: FutureBuilder<Livro?>(
+        future: _futuro,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final livro = snapshot.data;
+          if (snapshot.hasError || livro == null) {
+            return const Center(child: Text('Livro não encontrado.'));
+          }
+
+          return LivroFormulario(
+            livro: livro,
+            textoBotao: 'Salvar alterações',
+            onSalvar: (editado) async {
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+
+              final erro = await controller.editar(editado);
+              if (erro == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Livro atualizado com sucesso!')),
+                );
+                navigator.pop();
+              }
+              return erro;
+            },
           );
-          Navigator.pop(context);
         },
       ),
     );

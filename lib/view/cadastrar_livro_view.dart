@@ -4,7 +4,7 @@ import '../controller/livro_controller.dart';
 import '../core/dependencias.dart';
 import 'livro_formulario.dart';
 
-/// Funcionalidade 2: cadastrar livro.
+/// RF003: inserção de um livro no Firestore (coleção "livros").
 class CadastrarLivroView extends StatelessWidget {
   const CadastrarLivroView({super.key});
 
@@ -16,12 +16,18 @@ class CadastrarLivroView extends StatelessWidget {
       appBar: AppBar(title: const Text('Cadastrar livro')),
       body: LivroFormulario(
         textoBotao: 'Cadastrar',
-        onSalvar: (livro) {
-          controller.adicionar(livro);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: const Text('Livro cadastrado!')),
-          );
-          Navigator.pop(context);
+        onSalvar: (livro) async {
+          final messenger = ScaffoldMessenger.of(context);
+          final navigator = Navigator.of(context);
+
+          final erro = await controller.adicionar(livro);
+          if (erro == null) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Livro cadastrado com sucesso!')),
+            );
+            navigator.pop();
+          }
+          return erro; // o formulário exibe o erro, se houver
         },
       ),
     );

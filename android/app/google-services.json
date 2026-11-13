@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "59317974660",
+    "project_id": "dispo-moveisp2",
+    "storage_bucket": "dispo-moveisp2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:59317974660:android:2e42e58b0fada098cff4d1",
+        "android_client_info": {
+          "package_name": "com.example.app_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvvCQrolPsFaOtK6CFQo2q2EcXixhQfkY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

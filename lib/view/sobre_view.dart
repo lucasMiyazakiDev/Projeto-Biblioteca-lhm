@@ -11,7 +11,7 @@ class SobreView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sobre = getIt<SobreController>();
-    final logado = getIt<Sessao>().usuarioLogado != null;
+    final logado = getIt<Sessao>().estaLogado;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sobre')),
@@ -19,7 +19,12 @@ class SobreView extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Image.asset('../../../assets/images/logo.png', height: 100),
+          Image.asset(
+            'assets/images/logo.png',
+            height: 100,
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.menu_book, size: 90),
+          ),
           const SizedBox(height: 10),
           Text(
             sobre.nomeApp,
@@ -34,7 +39,7 @@ class SobreView extends StatelessWidget {
           const SizedBox(height: 20),
           const Text('Aluno:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text('Nome: ${sobre.integrante}'),          
+          Text('Nome: ${sobre.integrante}'),
           const SizedBox(height: 20),
           const Text('Informações',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../model/livro.dart';
 
-/// Formulário usado nas telas de cadastrar e editar livro.
+/// Formulário usado nas telas de cadastrar e editar livro (RF003).
+///
+/// [onSalvar] grava o livro e devolve null se deu certo, ou a mensagem de
+/// erro. O formulário mostra o progresso e exibe o erro, se houver.
 class LivroFormulario extends StatefulWidget {
   final Livro? livro; // null = cadastro; preenchido = edição
   final String textoBotao;
-  final void Function(Livro livro) onSalvar;
+  final Future<String?> Function(Livro livro) onSalvar;
 
   const LivroFormulario({
     super.key,
@@ -26,6 +29,7 @@ class _LivroFormularioState extends State<LivroFormulario> {
   final sinopseCtrl = TextEditingController();
   String genero = generos.first;
   bool lido = false;
+  bool salvando = false;
 
   @override
   void initState() {
@@ -36,7 +40,8 @@ class _LivroFormularioState extends State<LivroFormulario> {
       autorCtrl.text = l.autor;
       paginasCtrl.text = l.paginas.toString();
       sinopseCtrl.text = l.sinopse;
-      genero = l.genero;
+      // evita erro do Dropdown se o gênero salvo não estiver na lista
+      genero = generos.contains(l.genero) ? l.genero : generos.last;
       lido = l.lido;
     }
   }
@@ -50,24 +55,26 @@ class _LivroFormularioState extends State<LivroFormulario> {
     super.dispose();
   }
 
-  void salvar() {
+  void _mensagem(String texto) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  Future<void> salvar() async {
+    if (salvando) return;
     final paginas = int.tryParse(paginasCtrl.text.trim());
 
     if (tituloCtrl.text.trim().isEmpty || autorCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Preencha o título e o autor.')),
-      );
+      _mensagem('Preencha o título e o autor.');
       return;
     }
     if (paginas == null || paginas <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Informe um número de páginas válido.')),
-      );
+      _mensagem('Informe um número de páginas válido.');
       return;
     }
 
-    widget.onSalvar(Livro(
-      id: widget.livro?.id ?? 0,
+    setState(() => salvando = true);
+    final erro = await widget.onSalvar(Livro(
+      id: widget.livro?.id ?? '',
       titulo: tituloCtrl.text.trim(),
       autor: autorCtrl.text.trim(),
       genero: genero,
@@ -75,6 +82,11 @@ class _LivroFormularioState extends State<LivroFormulario> {
       sinopse: sinopseCtrl.text.trim(),
       lido: lido,
     ));
+
+    // em caso de sucesso a tela pai já pode ter fechado este formulário
+    if (!mounted) return;
+    setState(() => salvando = false);
+    if (erro != null) _mensagem(erro);
   }
 
   @override
@@ -85,44 +97,59 @@ class _LivroFormularioState extends State<LivroFormulario> {
         children: [
           TextField(
             controller: tituloCtrl,
+            enabled: !salvando,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(labelText: 'Título'),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: autorCtrl,
+            enabled: !salvando,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(labelText: 'Autor'),
           ),
           const SizedBox(height: 10),
-          DropdownButton<String>(
+          DropdownButtonFormField<String>(
             value: genero,
             isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Gênero'),
             items: generos
                 .map((g) => DropdownMenuItem(value: g, child: Text(g)))
                 .toList(),
-            onChanged: (valor) => setState(() => genero = valor ?? genero),
+            onChanged: salvando
+                ? null
+                : (valor) => setState(() => genero = valor ?? genero),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: paginasCtrl,
+            enabled: !salvando,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(labelText: 'Páginas'),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: sinopseCtrl,
+            enabled: !salvando,
             maxLines: 3,
             decoration: const InputDecoration(labelText: 'Sinopse (opcional)'),
           ),
           CheckboxListTile(
             title: const Text('Já li este livro'),
             value: lido,
-            onChanged: (v) => setState(() => lido = v ?? false),
+            onChanged: salvando ? null : (v) => setState(() => lido = v ?? false),
           ),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: salvar,
-              child: Text(widget.textoBotao),
+              onPressed: salvando ? null : salvar,
+              child: salvando
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(widget.textoBotao),
             ),
           ),
         ],

@@ -10,17 +10,21 @@ import '../model/sessao.dart';
 
 final getIt = GetIt.instance;
 
+/// Chame DEPOIS de Firebase.initializeApp() (veja o main.dart).
 void configurarDependencias() {
-  // um só objeto para o app inteiro
-  getIt.registerSingleton<Sessao>(Sessao());
-  getIt.registerSingleton<LivroController>(LivroController());
-  getIt.registerSingleton<SobreController>(SobreController());
+  // um só objeto para o app inteiro (criado só no primeiro uso)
+  getIt.registerLazySingleton<Sessao>(() => Sessao());
+  getIt.registerLazySingleton<LivroController>(
+      () => LivroController(getIt<Sessao>()));
+  getIt.registerLazySingleton<SobreController>(() => SobreController());
 
   // um objeto novo a cada tela
-  getIt.registerFactory<LoginController>(() => LoginController(getIt<Sessao>()));
+  getIt.registerFactory<LoginController>(
+      () => LoginController(getIt<Sessao>()));
   getIt.registerFactory<CadastrarUsuarioController>(
       () => CadastrarUsuarioController(getIt<Sessao>()));
   getIt.registerFactory<RecuperarSenhaController>(
       () => RecuperarSenhaController(getIt<Sessao>()));
-  getIt.registerFactory<PerfilController>(() => PerfilController(getIt<Sessao>()));
+  getIt.registerFactory<PerfilController>(
+      () => PerfilController(getIt<Sessao>()));
 }

@@ -1,3 +1,0 @@
-flutter pub add device_preview_plus
-flutter pub add get_it
-flutter pub add http

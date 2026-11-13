@@ -4,12 +4,44 @@ import '../controller/livro_controller.dart';
 import '../core/app_routes.dart';
 import '../core/dependencias.dart';
 import '../model/livro.dart';
+import 'erro_com_retry.dart';
 
-/// Funcionalidade 4: detalhes do livro, com marcar como lido e excluir.
-class DetalhesLivroView extends StatelessWidget {
+/// Detalhes do livro em tempo real, com marcar como lido, editar e excluir.
+class DetalhesLivroView extends StatefulWidget {
   const DetalhesLivroView({super.key});
 
-  Future<void> excluir(BuildContext context, LivroController c, Livro livro) async {
+  @override
+  State<DetalhesLivroView> createState() => _DetalhesLivroViewState();
+}
+
+class _DetalhesLivroViewState extends State<DetalhesLivroView> {
+  final controller = getIt<LivroController>();
+  late String _id;
+  late Stream<Livro?> _stream;
+  bool _iniciado = false;
+  bool _excluindo = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_iniciado) {
+      _id = ModalRoute.of(context)!.settings.arguments as String;
+      _stream = controller.livroStream(_id);
+      _iniciado = true;
+    }
+  }
+
+  void _mensagem(String texto) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  Future<void> _alternarLido(Livro livro) async {
+    final erro = await controller.alternarLido(livro);
+    if (!mounted || erro == null) return;
+    _mensagem(erro);
+  }
+
+  Future<void> _excluir(Livro livro) async {
     final confirmou = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -27,28 +59,51 @@ class DetalhesLivroView extends StatelessWidget {
         ],
       ),
     );
+    if (confirmou != true || !mounted) return;
 
-    if (confirmou == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Livro excluído.')),
-      );
-      Navigator.pop(context);
-      c.excluir(livro);
+    setState(() => _excluindo = true);
+    final erro = await controller.excluir(livro);
+    if (!mounted) return;
+
+    if (erro != null) {
+      setState(() => _excluindo = false);
+      _mensagem(erro);
+      return;
     }
+    _mensagem('Livro excluído.');
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = getIt<LivroController>();
-    final id = ModalRoute.of(context)!.settings.arguments as int;
+    return StreamBuilder<Livro?>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Detalhes')),
+            body: ErroComRetry(
+              mensagem: 'Não foi possível carregar o livro.',
+              onTentarNovamente: () =>
+                  setState(() => _stream = controller.livroStream(_id)),
+            ),
+          );
+        }
 
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final livro = controller.buscarPorId(id);
+        final livro = snapshot.data;
+        final carregando = snapshot.connectionState == ConnectionState.waiting;
 
-        // o livro acabou de ser excluído
-        if (livro == null) return Scaffold(appBar: AppBar());
+        // carregando, ou o livro acabou de ser excluído
+        if (livro == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Detalhes')),
+            body: Center(
+              child: (carregando || _excluindo)
+                  ? const CircularProgressIndicator()
+                  : const Text('Livro não encontrado.'),
+            ),
+          );
+        }
 
         return Scaffold(
           appBar: AppBar(title: const Text('Detalhes')),
@@ -69,23 +124,31 @@ class DetalhesLivroView extends StatelessWidget {
               Text(livro.sinopse.isEmpty ? 'Sem sinopse.' : livro.sinopse),
               const SizedBox(height: 25),
               ElevatedButton(
-                onPressed: () => controller.alternarLido(livro),
+                onPressed: _excluindo ? null : () => _alternarLido(livro),
                 child: Text(
                     livro.lido ? 'Marcar como não lido' : 'Marcar como lido'),
               ),
               const SizedBox(height: 15),
               ElevatedButton(
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  AppRoutes.editarLivro,
-                  arguments: livro.id,
-                ),
+                onPressed: _excluindo
+                    ? null
+                    : () => Navigator.pushNamed(
+                          context,
+                          AppRoutes.editarLivro,
+                          arguments: livro.id,
+                        ),
                 child: const Text('Editar'),
               ),
               const SizedBox(height: 15),
               ElevatedButton(
-                onPressed: () => excluir(context, controller, livro),
-                child: const Text('Excluir'),
+                onPressed: _excluindo ? null : () => _excluir(livro),
+                child: _excluindo
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Excluir'),
               ),
             ],
           ),
